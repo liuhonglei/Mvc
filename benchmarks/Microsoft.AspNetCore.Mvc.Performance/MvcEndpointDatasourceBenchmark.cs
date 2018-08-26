@@ -111,6 +111,7 @@ namespace Microsoft.AspNetCore.Mvc.Performance
             var dataSource = new MvcEndpointDataSource(
                 actionDescriptorCollectionProvider,
                 new MvcEndpointInvokerFactory(new ActionInvokerFactory(Array.Empty<IActionInvokerProvider>())));
+                new MockParameterPolicyFactory());
 
             return dataSource;
         }

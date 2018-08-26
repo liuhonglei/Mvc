@@ -74,7 +74,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             Assert.Equal(displayName, matcherEndpoint.DisplayName);
             Assert.Equal(order, matcherEndpoint.Order);
-            Assert.Equal(template, matcherEndpoint.RoutePattern.RawText);
+            Assert.Equal("Template!", matcherEndpoint.RoutePattern.RawText);
         }
 
         [Fact]
@@ -148,6 +148,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         [InlineData("{controller}/{action=TestAction}/{id?}/{*catchAll}", new[] { "TestController", "TestController/TestAction/{id?}/{*catchAll}" })]
         [InlineData("{controller}/{action}.{ext?}", new[] { "TestController/TestAction.{ext?}" })]
         [InlineData("{controller}/{action=TestAction}.{ext?}", new[] { "TestController", "TestController/TestAction.{ext?}" })]
+        [InlineData("{controller:upper-case}/{action=TestAction}.{ext?}", new[] { "TESTCONTROLLER", "TESTCONTROLLER/TestAction.{ext?}" })]
         public void Endpoints_SingleAction(string endpointInfoRoute, string[] finalEndpointPatterns)
         {
             // Arrange
@@ -175,6 +176,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         [InlineData("{area=TestArea}/{controller}/{action=TestAction}/{id?}", new[] { "TestArea/TestController", "TestArea/TestController/TestAction/{id?}" })]
         [InlineData("{area=TestArea}/{controller=TestController}/{action=TestAction}/{id?}", new[] { "", "TestArea", "TestArea/TestController", "TestArea/TestController/TestAction/{id?}" })]
         [InlineData("{area:exists}/{controller}/{action}/{id?}", new[] { "TestArea/TestController/TestAction/{id?}" })]
+        [InlineData("{area:exists:upper-case}/{controller}/{action}/{id?}", new[] { "TESTAREA/TestController/TestAction/{id?}" })]
         public void Endpoints_AreaSingleAction(string endpointInfoRoute, string[] finalEndpointTemplates)
         {
             // Arrange
@@ -188,6 +190,10 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             var routeOptionsSetup = new MvcCoreRouteOptionsSetup();
             services.Configure<RouteOptions>(routeOptionsSetup.Configure);
+            services.Configure<RouteOptions>(options =>
+            {
+                options.ConstraintMap["upper-case"] = typeof(UpperCaseParameterTransform);
+            });
 
             dataSource.ConventionalEndpointInfos.Add(CreateEndpointInfo(string.Empty, endpointInfoRoute, serviceProvider: services.BuildServiceProvider()));
 
@@ -335,6 +341,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         [Theory]
         [InlineData("{controller}/{action}", new[] { "TestController1/TestAction1", "TestController1/TestAction2", "TestController1/TestAction3", "TestController2/TestAction1" })]
         [InlineData("{controller}/{action:regex((TestAction1|TestAction2))}", new[] { "TestController1/TestAction1", "TestController1/TestAction2", "TestController2/TestAction1" })]
+        [InlineData("{controller}/{action:regex((TestAction1|TestAction2)):upper-case}", new[] { "TestController1/TESTACTION1", "TestController1/TESTACTION2", "TestController2/TESTACTION1" })]
         public void Endpoints_MultipleActions(string endpointInfoRoute, string[] finalEndpointTemplates)
         {
             // Arrange
@@ -708,12 +715,23 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             var services = new ServiceCollection();
             services.AddSingleton(actionDescriptorCollectionProvider);
+            services.AddRouting(options => { });
+            var serviceProvider = services.BuildServiceProvider();
 
             var dataSource = new MvcEndpointDataSource(
                 actionDescriptorCollectionProvider,
-                mvcEndpointInvokerFactory ?? new MvcEndpointInvokerFactory(new ActionInvokerFactory(Array.Empty<IActionInvokerProvider>())));
+                mvcEndpointInvokerFactory ?? new MvcEndpointInvokerFactory(new ActionInvokerFactory(Array.Empty<IActionInvokerProvider>())),
+                serviceProvider.GetRequiredService<ParameterPolicyFactory>());
 
             return dataSource;
+        }
+
+        private class UpperCaseParameterTransform : IParameterTransformer
+        {
+            public string Transform(string value)
+            {
+                return value?.ToUpperInvariant();
+            }
         }
 
         private MvcEndpointInfo CreateEndpointInfo(
@@ -726,13 +744,18 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         {
             if (serviceProvider == null)
             {
-                var serviceCollection = new ServiceCollection();
-                serviceCollection.AddRouting();
+                var services = new ServiceCollection();
+                services.AddRouting();
+                services.AddSingleton(typeof(UpperCaseParameterTransform), new UpperCaseParameterTransform());
 
-                var routeOptionsSetup = new MvcCoreRouteOptionsSetup();
-                serviceCollection.Configure<RouteOptions>(routeOptionsSetup.Configure);
+	            var routeOptionsSetup = new MvcCoreRouteOptionsSetup();
+	            services.Configure<RouteOptions>(routeOptionsSetup.Configure);
+	            services.Configure<RouteOptions>(options =>
+	            {
+	                options.ConstraintMap["upper-case"] = typeof(UpperCaseParameterTransform);
+	            });
 
-                serviceProvider = serviceCollection.BuildServiceProvider();
+	            serviceProvider = services.BuildServiceProvider();
             }
 
             var parameterPolicyFactory = serviceProvider.GetRequiredService<ParameterPolicyFactory>();
