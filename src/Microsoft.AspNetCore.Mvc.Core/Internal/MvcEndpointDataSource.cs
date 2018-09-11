@@ -204,6 +204,8 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             }
         }
 
+        // CreateEndpoints processes the route pattern, replacing area/controller/action parameters with endpoint values
+        // Because of default values it is possible for a route pattern to resolve to multiple endpoints
         private int CreateEndpoints(
             List<Endpoint> endpoints,
             ref StringBuilder patternStringBuilder,
